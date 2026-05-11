@@ -16,7 +16,7 @@ describe('loadConfig', () => {
     vi.stubEnv('VITE_DEPLOYMENT_ID', 'test-id')
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ orgName: 'Test Org', brandColour: '#ff0000' }),
+      json: async () => ({ orgName: 'Test Org', brandColour: '#ff0000', isConfigured: true }),
     }) as any
     const config = await loadConfig()
     expect(config.orgName).toBe('Test Org')
