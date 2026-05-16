@@ -6,6 +6,8 @@ export interface AppConfig {
   logoUrl: string | null;
   systemPrompt: string;
   capabilities: string[];
+  status?: 'ACTIVE' | 'PILOT' | 'EXPIRED' | 'PAUSED';
+  pilotEndsAt?: string | null;
   isConfigured: boolean;
 }
 
@@ -13,21 +15,37 @@ const DEFAULTS: AppConfig = {
   deploymentId: 'local',
   appName: 'Compose',
   orgName: 'Your Organisation',
-  brandColour: '#6366f1',
+  brandColour: '#d97757',
   logoUrl: null,
   systemPrompt: 'You are a professional writing assistant.',
   capabilities: ['document-generation'],
+  status: 'ACTIVE',
   isConfigured: false,
 };
 
+let cached: AppConfig | null = null;
+
+/** @internal test-only: reset module-level cache between tests */
+export function _clearCache() { cached = null; }
+
 export async function loadConfig(): Promise<AppConfig> {
+  if (cached) return cached;
   const id = import.meta.env.VITE_DEPLOYMENT_ID;
-  if (!id) return DEFAULTS;
+  if (!id) {
+    cached = DEFAULTS;
+    return DEFAULTS;
+  }
   try {
     const res = await fetch(`https://app.jobgraph.com/api/apps/${id}/config`);
-    if (!res.ok) return DEFAULTS;
-    return { ...DEFAULTS, ...await res.json(), deploymentId: id, isConfigured: true };
+    if (!res.ok) {
+      cached = DEFAULTS;
+      return DEFAULTS;
+    }
+    const result: AppConfig = { ...DEFAULTS, ...(await res.json()), deploymentId: id, isConfigured: true };
+    cached = result;
+    return result;
   } catch {
+    cached = DEFAULTS;
     return DEFAULTS;
   }
 }
