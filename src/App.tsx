@@ -1,25 +1,6 @@
 import { useState, useEffect } from 'react';
 import { type AppConfig, loadConfig } from './config';
 
-const MOCK_RESPONSE = `Dear Mr. Johnson,
-
-Thank you for your enquiry regarding our enterprise licensing options. I'm pleased to provide the following overview.
-
-Our Enterprise plan includes:
-- Unlimited user seats
-- Priority support with 4-hour SLA
-- Custom integrations and API access
-- Dedicated account manager
-- Annual security audit and compliance reporting
-
-Based on your team size of 50 users, I'd recommend our Enterprise Growth tier at £2,400/month (billed annually). This includes all features above plus quarterly business reviews.
-
-I'd be happy to schedule a call to discuss your specific requirements in more detail. Please let me know your availability this week.
-
-Best regards,
-[Your name]
-[Your title]`;
-
 export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [brief, setBrief] = useState('');
@@ -28,27 +9,38 @@ export default function App() {
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => { loadConfig().then(setConfig); }, []);
   if (!config) return null;
 
+  if (!config.isConfigured) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6">
+        <div className="text-center max-w-md space-y-4">
+          <h1 className="text-2xl font-semibold">{config.appName}</h1>
+          <p className="text-white/60">This app is not configured. Deploy it from Jobgraph to get started.</p>
+          <a href="https://app.jobgraph.com" className="inline-block px-4 py-2 bg-indigo-600 rounded-lg text-white hover:bg-indigo-500 transition-colors">Go to Jobgraph</a>
+        </div>
+      </div>
+    );
+  }
+
   async function generate() {
     setLoading(true);
     setResult('');
+    setError('');
     try {
-      if (config!.deploymentId === 'local') {
-        await new Promise((r) => setTimeout(r, 1500));
-        setResult(MOCK_RESPONSE);
-      } else {
-        const res = await fetch(
-          `https://app.jobgraph.com/api/apps/${config!.deploymentId}/process`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input: brief, type: 'compose', tone, length }) }
-        );
-        const data = await res.json();
-        setResult(data.output);
-      }
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+      const res = await fetch(
+        `https://app.jobgraph.com/api/apps/${config!.deploymentId}/process`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input: brief, type: 'compose', tone, length }) }
+      );
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      const data = await res.json();
+      setResult(data.output ?? '');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+    } finally { setLoading(false); }
   }
 
   function copy() {
@@ -74,9 +66,9 @@ export default function App() {
         <div className="flex gap-4">
           <select value={tone} onChange={(e) => setTone(e.target.value)} className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm">
             <option value="professional">Professional</option>
-            <option value="friendly">Friendly</option>
-            <option value="formal">Formal</option>
             <option value="casual">Casual</option>
+            <option value="formal">Formal</option>
+            <option value="friendly">Friendly</option>
           </select>
           <select value={length} onChange={(e) => setLength(e.target.value)} className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm">
             <option value="short">Short</option>
@@ -85,13 +77,15 @@ export default function App() {
           </select>
         </div>
         <button onClick={generate} disabled={loading || !brief.trim()} style={{ backgroundColor: config.brandColour }} className="px-6 py-2.5 rounded-lg font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity">
-          {loading ? 'Generating...' : 'Generate document'}
+          {loading ? 'Generating...' : 'Generate'}
         </button>
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400">{error}</div>
+        )}
         {result && (
           <div className="space-y-4 pt-4">
             <section className="bg-white/5 border border-white/10 rounded-lg p-5">
-              <h2 className="text-lg font-semibold mb-2">Generated Document</h2>
-              <textarea readOnly value={result} className="w-full min-h-[200px] bg-black/30 border border-white/10 rounded p-3 text-white/80 resize-y" />
+              <pre className="whitespace-pre-wrap text-white/80 text-sm">{result}</pre>
             </section>
             <button onClick={copy} className="px-4 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-sm transition-colors">
               {copied ? '✓ Copied!' : 'Copy to clipboard'}
