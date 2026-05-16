@@ -176,5 +176,8 @@ Estimated duration: 14 weeks from project kick-off. We are available to commence
 **6. Next Steps**
 
 We welcome the opportunity to discuss this proposal in further detail. Please do not hesitate to reach out to arrange a follow-up meeting.`;
+
+    default:
+      return `Document: ${topic}\n\nNo template is available for the selected document type. Please choose one of the supported types: email, letter, report, memo, or proposal.`;
   }
 }

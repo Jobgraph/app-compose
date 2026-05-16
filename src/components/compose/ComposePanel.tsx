@@ -61,8 +61,18 @@ export function ComposePanel({ activeEntry, onGenerate, loading, brandColour }: 
     onGenerate({ brief: brief.trim(), documentType, tone, length });
   }
 
+  function stripMarkdown(text: string): string {
+    return text
+      .replace(/\*\*(.*?)\*\*/g, '$1')       // bold
+      .replace(/\*(.*?)\*/g, '$1')            // italic
+      .replace(/^#{1,6}\s+/gm, '')            // headings
+      .replace(/^-{3,}$/gm, '')               // horizontal rules
+      .replace(/^\s*[-*]\s+/gm, '- ')         // normalize list bullets
+      .replace(/\n{3,}/g, '\n\n');             // collapse excessive blank lines
+  }
+
   function handleCopy() {
-    navigator.clipboard.writeText(result);
+    navigator.clipboard.writeText(stripMarkdown(result));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
