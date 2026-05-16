@@ -78,11 +78,9 @@ export function ComposePanel({ activeEntry, onGenerate, loading, brandColour }: 
   }
 
   function renderMarkdown(text: string) {
-    const lines = text.split('\n');
-    return lines.map((line, i) => {
-      // Replace **bold** with <strong> tags
+    const parseBold = (input: string) => {
       const parts: (string | ReactElement)[] = [];
-      let remaining = line;
+      let remaining = input;
       let keyIdx = 0;
       while (remaining.includes('**')) {
         const start = remaining.indexOf('**');
@@ -98,7 +96,11 @@ export function ComposePanel({ activeEntry, onGenerate, loading, brandColour }: 
         remaining = remaining.slice(end + 2);
       }
       if (remaining) parts.push(remaining);
+      return parts;
+    };
 
+    const lines = text.split('\n');
+    return lines.map((line, i) => {
       if (line.trim() === '---') {
         return <hr key={i} className="my-3 border-border" />;
       }
@@ -106,15 +108,17 @@ export function ComposePanel({ activeEntry, onGenerate, loading, brandColour }: 
         return <br key={i} />;
       }
       if (line.startsWith('|')) {
-        return <p key={i} className="font-mono text-xs">{parts}</p>;
+        return <p key={i} className="font-mono text-xs">{parseBold(line)}</p>;
       }
       if (line.startsWith('- ')) {
-        return <li key={i} className="ml-4 list-disc">{parts.length > 0 ? parts : line.slice(2)}</li>;
+        const content = line.slice(2);
+        return <li key={i} className="ml-4 list-disc">{parseBold(content)}</li>;
       }
       if (/^\d+\.\s/.test(line)) {
-        return <li key={i} className="ml-4 list-decimal">{parts.length > 0 ? parts : line.replace(/^\d+\.\s/, '')}</li>;
+        const content = line.replace(/^\d+\.\s/, '');
+        return <li key={i} className="ml-4 list-decimal">{parseBold(content)}</li>;
       }
-      return <p key={i}>{parts}</p>;
+      return <p key={i}>{parseBold(line)}</p>;
     });
   }
 

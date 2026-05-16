@@ -55,7 +55,11 @@ export default function App() {
       status: 'pending',
     };
 
-    addEntry(entry);
+    if (activeId) {
+      updateEntry(entry);
+    } else {
+      addEntry(entry);
+    }
     setActiveId(id);
     refreshEntries();
 
