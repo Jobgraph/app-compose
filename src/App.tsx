@@ -1,98 +1,148 @@
-import { useState, useEffect } from 'react';
-import { type AppConfig, loadConfig } from './config';
+import { useState, useCallback } from 'react';
+import { Toaster, toast } from 'sonner';
+import { ThemeContext } from './lib/theme';
+import type { ComposeRequest, HistoryEntry } from './lib/types';
+import { useThemeProvider } from './hooks/useTheme';
+import { useConfig } from './hooks/useConfig';
+import { getHistory, addEntry, updateEntry, deleteEntry, clearAll } from './lib/history';
+import { getMockDocument } from './lib/mock';
+import { AppShell } from './components/shell/AppShell';
+import { ComposePanel } from './components/compose/ComposePanel';
 
 export default function App() {
-  const [config, setConfig] = useState<AppConfig | null>(null);
-  const [brief, setBrief] = useState('');
-  const [tone, setTone] = useState('professional');
-  const [length, setLength] = useState('medium');
-  const [result, setResult] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState('');
+  const themeCtx = useThemeProvider();
+  const { config, loading: configLoading } = useConfig();
+  const [entries, setEntries] = useState<HistoryEntry[]>(() => getHistory());
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
 
-  useEffect(() => { loadConfig().then(setConfig); }, []);
-  if (!config) return null;
+  const activeEntry = activeId ? entries.find(e => e.id === activeId) ?? null : null;
 
-  if (!config.isConfigured) {
+  const refreshEntries = useCallback(() => {
+    setEntries(getHistory());
+  }, []);
+
+  const handleNew = useCallback(() => {
+    setActiveId(null);
+  }, []);
+
+  const handleSelect = useCallback((id: string) => {
+    setActiveId(id);
+  }, []);
+
+  const handleDelete = useCallback((id: string) => {
+    deleteEntry(id);
+    refreshEntries();
+    if (activeId === id) setActiveId(null);
+  }, [activeId, refreshEntries]);
+
+  const handleClearAll = useCallback(() => {
+    clearAll();
+    refreshEntries();
+    setActiveId(null);
+  }, [refreshEntries]);
+
+  const handleGenerate = useCallback(async (request: ComposeRequest) => {
+    setGenerating(true);
+
+    const id = activeId ?? crypto.randomUUID();
+    const entry: HistoryEntry = {
+      id,
+      createdAt: new Date().toISOString(),
+      inputPreview: request.brief.slice(0, 80),
+      request,
+      result: null,
+      status: 'pending',
+    };
+
+    if (activeId) {
+      updateEntry(entry);
+    } else {
+      addEntry(entry);
+    }
+    setActiveId(id);
+    refreshEntries();
+
+    try {
+      // Simulate generation delay
+      await new Promise(r => setTimeout(r, 1200));
+
+      const content = getMockDocument(request);
+      const updated: HistoryEntry = {
+        ...entry,
+        result: {
+          documentType: request.documentType,
+          tone: request.tone,
+          length: request.length,
+          content,
+        },
+        status: 'complete',
+      };
+
+      updateEntry(updated);
+      refreshEntries();
+      toast.success('Document generated');
+    } catch {
+      const errEntry: HistoryEntry = {
+        ...entry,
+        status: 'error',
+        errorMessage: 'Failed to generate document',
+      };
+      updateEntry(errEntry);
+      refreshEntries();
+      toast.error('Failed to generate document');
+    } finally {
+      setGenerating(false);
+    }
+  }, [activeId, refreshEntries]);
+
+  if (configLoading || !config) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6">
-        <div className="text-center max-w-md space-y-4">
-          <h1 className="text-2xl font-semibold">{config.appName}</h1>
-          <p className="text-white/60">This app is not configured. Deploy it from Jobgraph to get started.</p>
-          <a href="https://app.jobgraph.com" className="inline-block px-4 py-2 bg-indigo-600 rounded-lg text-white hover:bg-indigo-500 transition-colors">Go to Jobgraph</a>
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
   }
 
-  async function generate() {
-    setLoading(true);
-    setResult('');
-    setError('');
-    try {
-      const res = await fetch(
-        `https://app.jobgraph.com/api/apps/${config!.deploymentId}/process`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input: brief, type: 'compose', tone, length }) }
-      );
-      if (!res.ok) throw new Error(`Request failed (${res.status})`);
-      const data = await res.json();
-      setResult(data.output ?? '');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
-    } finally { setLoading(false); }
-  }
-
-  function copy() {
-    navigator.clipboard.writeText(result);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  if (!config.isConfigured && config.deploymentId !== 'local') {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-background p-6">
+        <div className="text-center max-w-md space-y-4">
+          <h1 className="text-2xl font-extrabold text-foreground">{config.appName}</h1>
+          <p className="text-sm text-muted-foreground">This app is not yet configured. Deploy it from Jobgraph to get started.</p>
+          <a href="https://app.jobgraph.com" className="inline-block px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity">Go to Jobgraph</a>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b border-white/10 px-6 py-4 flex items-center gap-3">
-        {config.logoUrl && <img src={config.logoUrl} alt="" className="h-8 w-8 rounded" />}
-        <h1 className="text-xl font-semibold">{config.appName}</h1>
-        <span className="text-sm text-white/50">{config.orgName}</span>
-      </header>
-      <main className="flex-1 max-w-3xl w-full mx-auto px-6 py-8 space-y-6">
-        <textarea
-          value={brief}
-          onChange={(e) => setBrief(e.target.value)}
-          placeholder="What do you need written?"
-          className="w-full min-h-[160px] bg-white/5 border border-white/10 rounded-lg p-4 resize-y focus:outline-none focus:ring-2 focus:ring-indigo-500"
+    <ThemeContext value={themeCtx}>
+      <AppShell
+        config={config}
+        entries={entries}
+        activeId={activeId}
+        onSelect={handleSelect}
+        onNew={handleNew}
+        onDelete={handleDelete}
+        onClearAll={handleClearAll}
+      >
+        <ComposePanel
+          activeEntry={activeEntry}
+          onGenerate={handleGenerate}
+          loading={generating}
+          brandColour={config.brandColour}
         />
-        <div className="flex gap-4">
-          <select value={tone} onChange={(e) => setTone(e.target.value)} className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm">
-            <option value="professional">Professional</option>
-            <option value="casual">Casual</option>
-            <option value="formal">Formal</option>
-            <option value="friendly">Friendly</option>
-          </select>
-          <select value={length} onChange={(e) => setLength(e.target.value)} className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm">
-            <option value="short">Short</option>
-            <option value="medium">Medium</option>
-            <option value="long">Long</option>
-          </select>
-        </div>
-        <button onClick={generate} disabled={loading || !brief.trim()} style={{ backgroundColor: config.brandColour }} className="px-6 py-2.5 rounded-lg font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity">
-          {loading ? 'Generating...' : 'Generate'}
-        </button>
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400">{error}</div>
-        )}
-        {result && (
-          <div className="space-y-4 pt-4">
-            <section className="bg-white/5 border border-white/10 rounded-lg p-5">
-              <pre className="whitespace-pre-wrap text-white/80 text-sm">{result}</pre>
-            </section>
-            <button onClick={copy} className="px-4 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-sm transition-colors">
-              {copied ? '✓ Copied!' : 'Copy to clipboard'}
-            </button>
-          </div>
-        )}
-      </main>
-    </div>
+      </AppShell>
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          className: 'bg-card text-card-foreground border-border',
+        }}
+      />
+    </ThemeContext>
   );
 }
