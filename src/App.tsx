@@ -6,6 +6,7 @@ import { useThemeProvider } from './hooks/useTheme';
 import { useConfig } from './hooks/useConfig';
 import { getHistory, addEntry, updateEntry, deleteEntry, clearAll } from './lib/history';
 import { getMockDocument } from './lib/mock';
+import { processInput } from './lib/api';
 import { AppShell } from './components/shell/AppShell';
 import { ComposePanel } from './components/compose/ComposePanel';
 
@@ -64,10 +65,23 @@ export default function App() {
     refreshEntries();
 
     try {
-      // Simulate generation delay
-      await new Promise(r => setTimeout(r, 1200));
+      let content: string;
 
-      const content = getMockDocument(request);
+      if (config.isConfigured && config.deploymentId !== 'local') {
+        const apiInput = JSON.stringify({
+          type: request.documentType,
+          tone: request.tone,
+          length: request.length,
+          topic: request.brief,
+        });
+        const response = await processInput(config, apiInput);
+        content = response.result;
+      } else {
+        // Local dev fallback
+        await new Promise(r => setTimeout(r, 1200));
+        content = getMockDocument(request);
+      }
+
       const updated: HistoryEntry = {
         ...entry,
         result: {
@@ -82,15 +96,20 @@ export default function App() {
       updateEntry(updated);
       refreshEntries();
       toast.success('Document generated');
-    } catch {
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message === 'RATE_LIMITED'
+          ? 'Too many requests — please wait a moment and try again'
+          : 'Failed to generate document';
+
       const errEntry: HistoryEntry = {
         ...entry,
         status: 'error',
-        errorMessage: 'Failed to generate document',
+        errorMessage: message,
       };
       updateEntry(errEntry);
       refreshEntries();
-      toast.error('Failed to generate document');
+      toast.error(message);
     } finally {
       setGenerating(false);
     }
